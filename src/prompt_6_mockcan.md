@@ -29,4 +29,12 @@ Execution: Run uv run python src/main.py and verify that simulated data appears 
 "Make MockCanWorker write all simulated CAN messages to a CSV file (mock_can_log.csv) so I can replay them later for consistent testing."
 
 # Scenario 1: Building the UI on a laptop without hardware
-~bash 
+``` bash
+USE_MOCK=1 uv run python src/main.py
+```
+# Scenario 2: Real hardware testing
+```   
+# bash
+USE_MOCK=0 uv run python src/main.py
+```
+
