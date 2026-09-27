@@ -11,16 +11,11 @@ Simulated CAN protocol (mirrors qml_bridge.py constants):
 NEVER uses time.sleep() or blocking loops.  All periodic work runs via QTimer.
 """
 
-import csv
 import random
 import struct
-from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
-
-# CSV log path — written next to the src/ directory
-_LOG_PATH: Path = Path(__file__).parent.parent / "mock_can_log.csv"
 
 # CAN IDs
 _ID_RPM:   int = 0x101
@@ -64,11 +59,12 @@ class MockCanWorker(QObject):
         super().__init__(parent)
 
         # ── Simulation state ──────────────────────────────────────────
-        self._rpm:     float = 0.0
+        self._rpm:        float = 0.0
         self._rpm_target: float = 0.0
-        self._temp:    float = 25.0
-        self._temp_dir: int  = 1       # +1 heating, -1 cooling
-        self._volt:    float = 12.6
+        self._temp:       float = 25.0
+        self._temp_dir:   int   = 1
+        self._volt:       float = 12.6
+        self._elapsed_ms: int   = 0
 
         # ── Timers ────────────────────────────────────────────────────
         self._data_timer:  QTimer = QTimer(self)
@@ -79,12 +75,6 @@ class MockCanWorker(QObject):
 
         self._error_timer.setInterval(self._ERROR_MS)
         self._error_timer.timeout.connect(self._on_simulated_error)
-
-        # ── CSV log ───────────────────────────────────────────────────
-        self._csv_file = open(_LOG_PATH, "w", newline="", encoding="utf-8")
-        self._csv_writer = csv.writer(self._csv_file)
-        self._csv_writer.writerow(["timestamp_ms", "can_id", "data_hex"])
-        self._elapsed_ms: int = 0
 
     # ------------------------------------------------------------------
     # Public slots — identical API to CanWorker
@@ -106,16 +96,11 @@ class MockCanWorker(QObject):
 
     @Slot()
     def stop(self) -> None:
-        """Stop all timers and close the CSV log."""
+        """Stop all timers."""
         self._data_timer.stop()
         self._error_timer.stop()
-
-        # Flush and close CSV
-        self._csv_file.flush()
-        self._csv_file.close()
-
         self.error_occurred.emit("Mock worker stopped.")
-        print("[MockCAN] stop: all timers stopped, CSV log closed.")
+        print("[MockCAN] stop: all timers stopped.")
 
     @Slot(int, list)
     def send_message(self, can_id: int, data: list[int]) -> None:
@@ -248,9 +233,5 @@ class MockCanWorker(QObject):
     # ------------------------------------------------------------------
 
     def _emit(self, can_id: int, data: list[int]) -> None:
-        """Emit a frame and log it to the CSV file."""
+        """Emit a received frame signal."""
         self.message_received.emit(can_id, data)
-
-        hex_data = " ".join(f"{b:02X}" for b in data)
-        self._csv_writer.writerow([self._elapsed_ms, f"0x{can_id:03X}", hex_data])
-        self._csv_file.flush()

@@ -3,9 +3,15 @@ QML Bridge — thread-safe adapter between QML and the CAN worker.
 
 Accepts either CanWorker or MockCanWorker; both share the same public
 signal/slot interface so this class needs no conditional logic.
+
+CSV logging runs here so it covers both real hardware and mock mode.
+A new timestamped file is created each session in the project root.
 """
 
+import csv
 import struct
+from datetime import datetime
+from pathlib import Path
 from typing import Union, Optional
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
@@ -15,6 +21,9 @@ from mock_can_worker import MockCanWorker
 
 # Type alias used in __init__ signature
 AnyWorker = Union[CanWorker, MockCanWorker]
+
+# Project root (two levels up from src/)
+_LOG_DIR: Path = Path(__file__).parent.parent
 
 # ---------------------------------------------------------------------------
 # CAN ID → property mapping (agreed protocol with ESP32-S3 firmware)
@@ -81,6 +90,15 @@ class QmlBridge(QObject):
         self._temperature:     float = 0.0
         self._voltage:         float = 0.0
         self._status_log:      str   = ""
+
+        # ── CSV log — one timestamped file per session, covers both workers
+        session_ts: str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        mode_tag:   str = "mock" if self._is_mock else "hw"
+        log_path: Path  = _LOG_DIR / f"can_log_{session_ts}_{mode_tag}.csv"
+        self._csv_file  = open(log_path, "w", newline="", encoding="utf-8")
+        self._csv_writer = csv.writer(self._csv_file)
+        self._csv_writer.writerow(["wall_time", "direction", "can_id", "len", "data_hex"])
+        print(f"[Bridge] CSV log → {log_path}")
 
         # ── Connect core worker signals ────────────────────────────────
         self._worker.message_received.connect(self._on_message_received)
@@ -201,7 +219,9 @@ class QmlBridge(QObject):
     @Slot(int, list)
     def send_command(self, can_id: int, data: list[int]) -> None:
         """Forward a raw CAN frame to the worker (cross-thread safe)."""
-        self._worker.send_message(can_id, data)
+        safe: list[int] = [int(b) for b in data]
+        self._csv_log("TX", can_id, safe)
+        self._worker.send_message(can_id, safe)
 
     @Slot()
     def simulateDisconnect(self) -> None:
@@ -250,6 +270,7 @@ class QmlBridge(QObject):
 
         hex_data = " ".join(f"{b:02X}" for b in safe)
         self._append_log(f"RX  ID=0x{can_id:03X}  [{len(safe)}]  {hex_data}")
+        self._csv_log("RX", can_id, safe)
 
     @Slot(str)
     def _on_error_occurred(self, message: str) -> None:
@@ -272,6 +293,22 @@ class QmlBridge(QObject):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _csv_log(self, direction: str, can_id: int, data: list[int]) -> None:
+        """Write one row to the CSV log and flush immediately."""
+        hex_data = " ".join(f"{b:02X}" for b in data)
+        wall_time = datetime.now().strftime("%H:%M:%S.%f")[:-3]  # ms precision
+        self._csv_writer.writerow([wall_time, direction, f"0x{can_id:03X}", len(data), hex_data])
+        self._csv_file.flush()
+
+    def close_log(self) -> None:
+        """Flush and close the CSV log file. Call this on app teardown."""
+        try:
+            self._csv_file.flush()
+            self._csv_file.close()
+            print("[Bridge] CSV log closed.")
+        except Exception:
+            pass
 
     def _append_log(self, line: str) -> None:
         """Append *line* to statusLog and emit logMessage."""
