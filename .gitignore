@@ -10,3 +10,4 @@ wheels/
 .venv
 # csv log file
 .csv
+*.csv
