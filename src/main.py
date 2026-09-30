@@ -62,7 +62,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     def _on_about_to_quit() -> None:
         worker.stop()
-        bridge.close_log()
+        bridge.stopLogging()   # flush CSV if logging was active
         can_thread.quit()
         can_thread.wait()
 

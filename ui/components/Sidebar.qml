@@ -23,8 +23,12 @@ Rectangle {
     signal loadFileRequested()
     signal startRequested()
     signal stopRequested()
+    signal logStartRequested(string path)
+    signal logStopRequested()
 
     property bool   isRunning:   false
+    property bool   isLogging:   false
+    property string logFilePath: ""
     property var    configModel: ["No configs loaded"]
 
     // ------------------------------------------------------------------
@@ -126,6 +130,18 @@ Rectangle {
             Material.foreground: "#ffffff"
 
             onClicked: root.stopRequested()
+        }
+
+        Rectangle { color: "#333333"; Layout.fillWidth: true; height: 1 }
+
+        // ── CSV Logging card ──────────────────────────────────────────
+        LoggingCard {
+            Layout.fillWidth: true
+            isLogging:        root.isLogging
+            logFilePath:      root.logFilePath
+
+            onStartRequested: (path) => root.logStartRequested(path)
+            onStopRequested:  root.logStopRequested()
         }
 
         // ── Spacer ────────────────────────────────────────────────────
